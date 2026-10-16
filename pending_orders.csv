@@ -1,0 +1,6 @@
+date,ticker,name,action,quantity,currency,manual_price,manual_fx,notes
+2026-10-16,SMH,VanEck Semiconductor ETF,SELL,1151,USD,,,Week 2 Friday MOC order
+2026-10-16,CIBR,First Trust Nasdaq Cybersecurity ETF,SELL,3549,USD,,,Week 2 Friday MOC order
+2026-10-16,XLV,State Street Health Care Select Sector SPDR ETF,BUY,2420,USD,,,Week 2 Friday MOC order
+2026-10-16,XLP,State Street Consumer Staples Select Sector SPDR ETF,BUY,3298,USD,,,Week 2 Friday MOC order
+2026-10-16,XLE,State Street Energy Select Sector SPDR ETF,BUY,3221,USD,,,Week 2 Friday MOC order

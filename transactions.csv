@@ -1,13 +1,8 @@
 date,ticker,name,action,quantity,currency,manual_price,manual_fx,notes
-2026-10-09,069500.KS,KODEX 200,BUY,23663,KRW,105650,1,Initial Week 1 order
-2026-10-09,SPY,SPDR S&P 500 ETF Trust,BUY,2400,USD,,,Initial Week 1 order
-2026-10-09,SMH,VanEck Semiconductor ETF,BUY,1790,USD,,,Initial Week 1 order
-2026-10-09,CIBR,First Trust Nasdaq Cybersecurity ETF,BUY,7001,USD,,,Initial Week 1 order
-2026-10-09,BIL,SPDR Bloomberg 1-3 Month T-Bill ETF,BUY,8159,USD,,,Initial Week 1 order
-2026-10-09,SCHD,Schwab U.S. Dividend Equity ETF,BUY,34286,USD,,,Initial Week 1 order
-2026-10-14,069500.KS,KODEX 200,SELL,23663,KRW,94805,1,Loss-cut settlement
-2026-10-16,SMH,VanEck Semiconductor ETF,SELL,1151,USD,,,Week 2 rebalance
-2026-10-16,CIBR,First Trust Nasdaq Cybersecurity ETF,SELL,3549,USD,,,Week 2 rebalance
-2026-10-16,XLV,State Street Health Care Select Sector SPDR ETF,BUY,2420,USD,,,Week 2 rebalance
-2026-10-16,XLP,State Street Consumer Staples Select Sector SPDR ETF,BUY,3298,USD,,,Week 2 rebalance
-2026-10-16,XLE,State Street Energy Select Sector SPDR ETF,BUY,3221,USD,,,Week 2 rebalance
+2026-10-09,069500.KS,KODEX 200,BUY,23663,KRW,105650,1,Official Week 1 opening price
+2026-10-09,SPY,SPDR S&P 500 ETF Trust,BUY,2400,USD,778.57,1342,Official Week 1 opening price and FX
+2026-10-09,SMH,VanEck Semiconductor ETF,BUY,1790,USD,603.33,1342,Official Week 1 opening price and FX
+2026-10-09,CIBR,First Trust Nasdaq Cybersecurity ETF,BUY,7001,USD,110,1342,Official Week 1 opening price and FX
+2026-10-09,BIL,SPDR Bloomberg 1-3 Month T-Bill ETF,BUY,8159,USD,91.51,1342,Official Week 1 opening price and FX
+2026-10-09,SCHD,Schwab U.S. Dividend Equity ETF,BUY,34001,USD,33.04,1342,Official Week 1 opening price and FX
+2026-10-14,069500.KS,KODEX 200,SELL,23663,KRW,94805,1,Loss-cut settlement at Oct 14 close
