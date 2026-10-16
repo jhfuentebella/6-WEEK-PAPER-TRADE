@@ -6,8 +6,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
+from pykrx import stock as krx_stock
 
-st.set_page_config(page_title="DBA4014 Portfolio Dashboard v3", layout="wide")
+st.set_page_config(page_title="DBA4014 Portfolio Dashboard v5", layout="wide")
 
 STARTING_CAPITAL = 10_000_000_000
 TRACKING_START = pd.Timestamp("2026-10-09")
@@ -47,6 +48,43 @@ def get_close(ticker: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
     close = close.astype(float).dropna().sort_index()
     close.name = ticker
     return close
+
+
+@st.cache_data(ttl=900)
+def get_kospi200_close(start: pd.Timestamp, end: pd.Timestamp):
+    """
+    Primary source: KRX via pykrx, KOSPI200 index code 1028.
+    Fallback 1: Yahoo ^KS200 only if it returns a usable history.
+    Fallback 2: KODEX 200 (069500.KS) as a clearly labeled return proxy.
+    """
+    # Primary: official KRX index history through pykrx.
+    try:
+        df = krx_stock.get_index_ohlcv(
+            start.strftime("%Y%m%d"),
+            end.strftime("%Y%m%d"),
+            "1028",
+        )
+        if df is not None and not df.empty and "종가" in df.columns:
+            s = df["종가"].astype(float).dropna().sort_index()
+            s.index = pd.to_datetime(s.index).tz_localize(None)
+            # Need at least two observations and a usable starting observation.
+            if len(s) >= 2:
+                s.name = "KOSPI200"
+                return s, "KRX KOSPI200 index (pykrx, code 1028)"
+    except Exception:
+        pass
+
+    # Fallback 1: Yahoo's index feed, but only if it has a real history.
+    y = get_close("^KS200", start, end)
+    if len(y.dropna()) >= 2:
+        return y, "Yahoo Finance ^KS200 fallback"
+
+    # Fallback 2: KODEX 200 is not the professor's exact index, but closely tracks it.
+    proxy = get_close("069500.KS", start, end)
+    if len(proxy.dropna()) >= 2:
+        return proxy, "KODEX 200 ETF proxy (069500.KS) — fallback"
+
+    return pd.Series(dtype=float, name="KOSPI200"), "KOSPI200 data unavailable"
 
 
 def align_with_prior_close(series: pd.Series, idx: pd.DatetimeIndex) -> pd.Series:
@@ -91,6 +129,75 @@ def load_csv(path):
     for c in ["quantity", "manual_price", "manual_fx"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     return df.sort_values(["date", "ticker"]).reset_index(drop=True)
+
+
+MANUAL_FILE = Path("manual_market.csv")
+
+
+def load_manual_market():
+    cols = ["date", "ticker", "manual_price", "note"]
+    if not MANUAL_FILE.exists():
+        return pd.DataFrame(columns=cols)
+    df = pd.read_csv(MANUAL_FILE)
+    for c in cols:
+        if c not in df.columns:
+            df[c] = np.nan
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["manual_price"] = pd.to_numeric(df["manual_price"], errors="coerce")
+    df = df.dropna(subset=["date", "ticker", "manual_price"])
+    return df[cols].sort_values(["date", "ticker"]).reset_index(drop=True)
+
+
+def save_manual_market(df):
+    out = df.copy()
+    out["date"] = pd.to_datetime(out["date"], errors="coerce")
+    out["manual_price"] = pd.to_numeric(out["manual_price"], errors="coerce")
+    out["ticker"] = out["ticker"].astype(str).str.strip()
+    out["note"] = out["note"].fillna("")
+    out = out.dropna(subset=["date", "manual_price"])
+    out = out[out["ticker"] != ""]
+    out = out.drop_duplicates(subset=["date", "ticker"], keep="last")
+    out = out.sort_values(["date", "ticker"]).reset_index(drop=True)
+    out.to_csv(MANUAL_FILE, index=False)
+    return out
+
+
+def apply_manual_overrides(price_map, kospi200_raw, manual_df):
+    """Manual/professor values override downloaded market closes on matching dates."""
+    effective = {k: v.copy() for k, v in price_map.items()}
+    kospi_effective = kospi200_raw.copy()
+
+    if manual_df.empty:
+        return effective, kospi_effective
+
+    for _, row in manual_df.iterrows():
+        dt = pd.Timestamp(row["date"]).normalize()
+        ticker = str(row["ticker"]).strip()
+        val = float(row["manual_price"])
+
+        if ticker == "KOSPI200":
+            kospi_effective.loc[dt] = val
+            kospi_effective = kospi_effective.sort_index()
+        else:
+            if ticker not in effective:
+                effective[ticker] = pd.Series(dtype=float, name=ticker)
+            s = effective[ticker].copy()
+            s.loc[dt] = val
+            effective[ticker] = s.sort_index()
+
+    return effective, kospi_effective
+
+
+def manual_lookup(manual_df, ticker, dt):
+    if manual_df.empty:
+        return np.nan
+    target = manual_df[
+        (manual_df["ticker"] == ticker)
+        & (manual_df["date"].dt.normalize() == pd.Timestamp(dt).normalize())
+    ]
+    if target.empty:
+        return np.nan
+    return float(target.iloc[-1]["manual_price"])
 
 
 def is_krw_ticker(ticker: str):
@@ -334,10 +441,10 @@ def build_portfolio(tx, price_map, end_date):
     )
 
 
-def build_benchmark(price_map, end_date):
+def build_benchmark(price_map, kospi200_raw, end_date):
     idx = pd.date_range(TRACKING_START, end_date, freq="D")
 
-    k200 = align_with_prior_close(price_map["^KS200"], idx)
+    k200 = align_with_prior_close(kospi200_raw, idx)
     sp = align_with_prior_close(price_map["^GSPC"], idx)
     fx = align_with_prior_close(price_map[FX_TICKER], idx)
 
@@ -434,7 +541,7 @@ latest_submission_date = pending["date"].max() if not pending.empty else None
 
 all_orders = pd.concat([executed, pending], ignore_index=True)
 all_tickers = sorted(set(all_orders["ticker"]))
-needed = all_tickers + ["^KS200", "^GSPC", FX_TICKER]
+needed = all_tickers + ["^GSPC", FX_TICKER, "069500.KS"]
 fetch_start = TRACKING_START - pd.Timedelta(days=10)
 
 price_map = {
@@ -442,15 +549,23 @@ price_map = {
     for t in sorted(set(needed))
 }
 
+kospi200_raw, kospi200_source = get_kospi200_close(fetch_start, end_date)
+
+# Professor/manual closes override downloaded market data whenever a matching date+ticker exists.
+manual_market = load_manual_market()
+effective_price_map, effective_kospi200 = apply_manual_overrides(
+    price_map, kospi200_raw, manual_market
+)
+
 effective_tx, pending_display = build_effective_transactions(
-    executed, pending, price_map, end_date, auto_execute_pending
+    executed, pending, effective_price_map, end_date, auto_execute_pending
 )
 
 daily_price, fx_series, holdings, avg_cost_krw, realized_pnl, nav = build_portfolio(
-    effective_tx, price_map, end_date
+    effective_tx, effective_price_map, end_date
 )
 component_rets, benchmark, benchmark_component_index, benchmark_series = build_benchmark(
-    price_map, end_date
+    effective_price_map, effective_kospi200, end_date
 )
 
 common_idx = nav.index.intersection(benchmark.index)
@@ -475,6 +590,11 @@ st.caption(
     "Each row shows its own price date."
 )
 
+if "proxy" in kospi200_source.lower() or "fallback" in kospi200_source.lower():
+    st.warning(f"KOSPI200 benchmark source: {kospi200_source}")
+else:
+    st.success(f"KOSPI200 benchmark source: {kospi200_source}")
+
 # ---- At a glance
 st.subheader("1. At a glance")
 m1, m2, m3, m4 = st.columns(4)
@@ -497,7 +617,7 @@ for ticker, qty in holdings.items():
     if qty <= 0:
         continue
 
-    latest_date, current_price, _, close_change = latest_close_info(price_map[ticker], end_date)
+    latest_date, current_price, _, close_change = latest_close_info(effective_price_map[ticker], end_date)
     if latest_date is None:
         continue
 
@@ -570,7 +690,7 @@ if exited:
         rows = []
         for ticker in exited:
             first_dt = first_acquisition_date(all_orders, ticker)
-            latest_date, current_price, _, close_change = latest_close_info(price_map[ticker], end_date)
+            latest_date, current_price, _, close_change = latest_close_info(effective_price_map[ticker], end_date)
             rows.append({
                 "ETF": ticker,
                 "최초 매수일": "-" if first_dt is None else first_dt.strftime("%Y-%m-%d"),
@@ -599,8 +719,152 @@ if not pending_display.empty:
             hide_index=True,
         )
 
+
+# ---- Professor/manual closing-price input
+st.subheader("3. Professor / manual closing-price input")
+st.caption(
+    "Enter the professor's official closing value here when it becomes available. "
+    "Once saved, the dashboard uses the manual value instead of the downloaded market value "
+    "for NAV, ETF returns, pending MOC execution, FX conversion, and benchmark calculations."
+)
+
+manual_asset_options = ["KOSPI200", "^GSPC", "KRW=X"] + all_tickers
+manual_asset_options = list(dict.fromkeys(manual_asset_options))
+
+input_col1, input_col2, input_col3 = st.columns([1.1, 1.4, 1.2])
+with input_col1:
+    manual_date_input = pd.Timestamp(
+        st.date_input("Manual value date", value=end_date.date(), key="manual_date")
+    )
+with input_col2:
+    manual_ticker_input = st.selectbox(
+        "Asset / index",
+        manual_asset_options,
+        key="manual_ticker",
+    )
+with input_col3:
+    manual_price_input = st.number_input(
+        "Professor/manual close",
+        min_value=0.0,
+        value=0.0,
+        step=0.01,
+        format="%.4f",
+        key="manual_price",
+    )
+
+manual_note_input = st.text_input(
+    "Note (optional)",
+    placeholder="e.g. Friday closing price from professor valuation sheet",
+)
+
+save_col, delete_col = st.columns([1, 1])
+with save_col:
+    if st.button("Save / update manual value", use_container_width=True):
+        if manual_price_input <= 0:
+            st.error("Enter a manual closing value greater than 0.")
+        else:
+            add = pd.DataFrame([{
+                "date": manual_date_input,
+                "ticker": manual_ticker_input,
+                "manual_price": manual_price_input,
+                "note": manual_note_input,
+            }])
+            manual_market = pd.concat([manual_market, add], ignore_index=True)
+            save_manual_market(manual_market)
+            st.success("Manual value saved. Refreshing calculations…")
+            st.cache_data.clear()
+            st.rerun()
+
+with delete_col:
+    if st.button("Delete selected manual value", use_container_width=True):
+        if not manual_market.empty:
+            keep = ~(
+                (manual_market["ticker"] == manual_ticker_input)
+                & (manual_market["date"].dt.normalize() == manual_date_input.normalize())
+            )
+            manual_market = save_manual_market(manual_market.loc[keep].copy())
+            st.success("Manual value deleted. Refreshing calculations…")
+            st.cache_data.clear()
+            st.rerun()
+
+st.markdown("**Manual vs downloaded closing-price comparison**")
+comparison_rows = []
+for _, row in manual_market.sort_values(["date", "ticker"], ascending=[False, True]).iterrows():
+    dt = pd.Timestamp(row["date"])
+    ticker = row["ticker"]
+    manual_val = float(row["manual_price"])
+
+    if ticker == "KOSPI200":
+        market_val = exact_value(kospi200_raw, dt)
+        source = kospi200_source
+    else:
+        raw_series = price_map.get(ticker, pd.Series(dtype=float))
+        market_val = exact_value(raw_series, dt)
+        source = "Yahoo Finance"
+
+    deviation = (
+        manual_val / market_val - 1
+        if pd.notna(market_val) and market_val != 0
+        else np.nan
+    )
+    comparison_rows.append({
+        "날짜": dt.strftime("%Y-%m-%d"),
+        "자산": ticker,
+        "Professor / Manual": manual_val,
+        "Yahoo / Market close": market_val,
+        "편차": deviation,
+        "시장 데이터 소스": source,
+        "메모": row.get("note", ""),
+    })
+
+if comparison_rows:
+    comp_df = pd.DataFrame(comparison_rows)
+    comp_style = (
+        comp_df.style
+        .format({
+            "Professor / Manual": "{:,.4f}",
+            "Yahoo / Market close": lambda x: "-" if pd.isna(x) else f"{x:,.4f}",
+            "편차": lambda x: "-" if pd.isna(x) else f"{x:+.3%}",
+        })
+        .map(signed_color, subset=["편차"])
+    )
+    st.dataframe(comp_style, use_container_width=True, hide_index=True)
+else:
+    st.info("No professor/manual market values saved yet.")
+
+download_bytes = (
+    manual_market.to_csv(index=False).encode("utf-8")
+    if not manual_market.empty
+    else b"date,ticker,manual_price,note\n"
+)
+st.download_button(
+    "Download manual-price backup CSV",
+    data=download_bytes,
+    file_name="manual_market.csv",
+    mime="text/csv",
+)
+
+uploaded_manual = st.file_uploader(
+    "Restore / import manual-price CSV",
+    type=["csv"],
+    help="Useful if you deploy the app online, where local file writes may not persist forever.",
+)
+if uploaded_manual is not None:
+    imported = pd.read_csv(uploaded_manual)
+    if st.button("Import uploaded manual-price CSV"):
+        save_manual_market(imported)
+        st.success("Manual-price CSV imported.")
+        st.cache_data.clear()
+        st.rerun()
+
+st.caption(
+    "Persistence: when you run Streamlit locally, saved manual values persist in manual_market.csv. "
+    "On Streamlit Community Cloud, local filesystem writes are not guaranteed to survive app restarts/redeploys, "
+    "so keep the downloadable CSV backup or connect an external persistent store later."
+)
+
 # ---- Charts
-st.subheader("3. Performance charts")
+st.subheader("4. Performance charts")
 tab1, tab2, tab3 = st.tabs([
     "Portfolio vs Benchmark",
     "All ETF price trends",
@@ -643,7 +907,7 @@ with tab2:
     idx = pd.date_range(TRACKING_START, end_date, freq="D")
 
     for ticker in all_tickers:
-        aligned = align_with_prior_close(price_map[ticker], idx)
+        aligned = align_with_prior_close(effective_price_map[ticker], idx)
         valid = aligned.dropna()
         if valid.empty:
             continue
@@ -698,7 +962,7 @@ with tab3:
     st.plotly_chart(fig_b, use_container_width=True)
 
 # ---- Benchmark detail table
-st.subheader("4. Professor benchmark detail")
+st.subheader("5. Professor benchmark detail")
 comp_cum = (1 + component_rets.loc[common_idx]).prod() - 1
 benchmark_rows = []
 
@@ -713,6 +977,7 @@ for name, weight in BENCHMARK_WEIGHTS.items():
     benchmark_rows.append({
         "구성": name,
         "교수님 비중": weight,
+        "데이터 소스": ("Manual override + " + kospi200_source) if (name == "KOSPI200" and not manual_market[manual_market["ticker"] == "KOSPI200"].empty) else ("Manual override + Yahoo Finance" if (name != "KOSPI200" and not manual_market[manual_market["ticker"].isin(["^GSPC", "KRW=X"])].empty) else (kospi200_source if name == "KOSPI200" else "Yahoo Finance")),
         "가격 기준일": "-" if latest_date is None else latest_date.strftime("%Y-%m-%d"),
         "최근 종가 등락": latest_change,
         "시작 이후 등락": comp_cum[name],

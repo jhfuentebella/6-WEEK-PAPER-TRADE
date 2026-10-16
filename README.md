@@ -1,4 +1,55 @@
-# DBA4014 Paper Trade Dashboard v3
+# DBA4014 Paper Trade Dashboard v5
+
+## Manual professor-price workflow
+
+v5 adds an in-app **Professor / manual closing-price input** section.
+
+You can enter:
+- date
+- ETF / benchmark ticker
+- professor's official closing value
+- optional note
+
+Once saved, that value overrides the downloaded market close on the matching date for:
+- portfolio NAV
+- ETF return calculations
+- KRW valuation
+- pending MOC execution
+- benchmark returns
+- charts
+
+The app also shows a comparison table:
+- professor/manual close
+- Yahoo/market close
+- percentage deviation
+
+### Saving behavior
+
+**Local Streamlit:** values are written to `manual_market.csv` and persist on your computer.
+
+**Streamlit Community Cloud:** local file writes can disappear after restart/redeploy, so v5 includes:
+- Download manual-price backup CSV
+- Restore/import manual-price CSV
+
+For fully automatic persistent cloud storage, a later version can connect this same table to
+Google Sheets or a free database such as Supabase.
+
+
+## KOSPI200 benchmark fix
+
+v3 could still show KOSPI200 as 0% because Yahoo/yfinance's `^KS200` feed can return only
+a current observation instead of the full requested history. When that happens, the dashboard
+has no prior KOSPI200 observations, so percentage changes become 0/None.
+
+v4 changes the benchmark source:
+
+1. **Primary:** KRX KOSPI200 index via `pykrx`, index code `1028`.
+2. **Fallback:** Yahoo `^KS200` only when it returns a usable multi-day history.
+3. **Last-resort proxy:** KODEX 200 (`069500.KS`), clearly labeled in the dashboard.
+
+The Professor Benchmark table now shows the data source being used.
+This is separate from portfolio pricing and does not change your ETF transactions.
+
 
 This version focuses on intuitive monitoring.
 
