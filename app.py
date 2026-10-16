@@ -6,9 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
-from pykrx import stock as krx_stock
 
-st.set_page_config(page_title="DBA4014 Portfolio Dashboard v5", layout="wide")
+st.set_page_config(page_title="DBA4014 Portfolio Dashboard v6", layout="wide")
 
 STARTING_CAPITAL = 10_000_000_000
 TRACKING_START = pd.Timestamp("2026-10-09")
@@ -53,39 +52,23 @@ def get_close(ticker: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
 @st.cache_data(ttl=900)
 def get_kospi200_close(start: pd.Timestamp, end: pd.Timestamp):
     """
-    Primary source: KRX via pykrx, KOSPI200 index code 1028.
-    Fallback 1: Yahoo ^KS200 only if it returns a usable history.
-    Fallback 2: KODEX 200 (069500.KS) as a clearly labeled return proxy.
-    """
-    # Primary: official KRX index history through pykrx.
-    try:
-        df = krx_stock.get_index_ohlcv(
-            start.strftime("%Y%m%d"),
-            end.strftime("%Y%m%d"),
-            "1028",
-        )
-        if df is not None and not df.empty and "종가" in df.columns:
-            s = df["종가"].astype(float).dropna().sort_index()
-            s.index = pd.to_datetime(s.index).tz_localize(None)
-            # Need at least two observations and a usable starting observation.
-            if len(s) >= 2:
-                s.name = "KOSPI200"
-                return s, "KRX KOSPI200 index (pykrx, code 1028)"
-    except Exception:
-        pass
+    Cloud-safe automatic source for the KOSPI200 sleeve.
 
-    # Fallback 1: Yahoo's index feed, but only if it has a real history.
+    Yahoo's ^KS200 history is tried first only when it returns a usable series.
+    If it does not, KODEX 200 (069500.KS) is used as an automatic proxy.
+
+    Exact professor/KOSPI200 closes entered in manual_market.csv override this
+    proxy on the matching dates.
+    """
     y = get_close("^KS200", start, end)
     if len(y.dropna()) >= 2:
-        return y, "Yahoo Finance ^KS200 fallback"
+        return y, "Yahoo Finance ^KS200"
 
-    # Fallback 2: KODEX 200 is not the professor's exact index, but closely tracks it.
     proxy = get_close("069500.KS", start, end)
     if len(proxy.dropna()) >= 2:
-        return proxy, "KODEX 200 ETF proxy (069500.KS) — fallback"
+        return proxy, "KODEX 200 proxy (069500.KS) — enter manual KOSPI200 for exact course values"
 
-    return pd.Series(dtype=float, name="KOSPI200"), "KOSPI200 data unavailable"
-
+    return pd.Series(dtype=float, name="KOSPI200"), "KOSPI200 automatic data unavailable"
 
 def align_with_prior_close(series: pd.Series, idx: pd.DatetimeIndex) -> pd.Series:
     if series.empty:
@@ -590,8 +573,11 @@ st.caption(
     "Each row shows its own price date."
 )
 
-if "proxy" in kospi200_source.lower() or "fallback" in kospi200_source.lower():
-    st.warning(f"KOSPI200 benchmark source: {kospi200_source}")
+if "proxy" in kospi200_source.lower() or "unavailable" in kospi200_source.lower():
+    st.warning(
+        f"KOSPI200 automatic benchmark source: {kospi200_source}. "
+        "For the professor-exact benchmark, enter the official KOSPI200 close in the Manual section."
+    )
 else:
     st.success(f"KOSPI200 benchmark source: {kospi200_source}")
 

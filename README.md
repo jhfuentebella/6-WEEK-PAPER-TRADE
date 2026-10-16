@@ -1,4 +1,21 @@
-# DBA4014 Paper Trade Dashboard v5
+# DBA4014 Paper Trade Dashboard v6
+
+## Streamlit Cloud compatibility fix
+
+v5 used `pykrx` for automatic KOSPI200 history. On Streamlit Cloud's current Python
+environment, `pykrx` can fail during import because it still imports `pkg_resources`.
+
+v6 removes the `pykrx` dependency entirely.
+
+### KOSPI200 source hierarchy in v6
+
+1. Yahoo `^KS200` if it returns a usable multi-day history.
+2. Otherwise, `KODEX 200 (069500.KS)` as an automatic monitoring proxy.
+3. Any professor/manual `KOSPI200` close entered in the dashboard overrides the automatic
+   value on that date and is used in all benchmark calculations.
+
+This makes the app deploy reliably while still allowing professor-exact benchmark values.
+
 
 ## Manual professor-price workflow
 
