@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -7,7 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 
-st.set_page_config(page_title="DBA4014 Portfolio Dashboard v6", layout="wide")
+st.set_page_config(page_title="DBA4014 Portfolio Dashboard v7", layout="wide")
 
 STARTING_CAPITAL = 10_000_000_000
 TRACKING_START = pd.Timestamp("2026-10-09")

@@ -1,4 +1,18 @@
-# DBA4014 Paper Trade Dashboard v6
+# DBA4014 Paper Trade Dashboard v7
+
+## Hotfix
+
+v6 referenced `Path("manual_market.csv")` but did not import `Path` from Python's
+`pathlib` module. That caused the Streamlit Cloud `NameError`.
+
+v7 adds:
+
+```python
+from pathlib import Path
+```
+
+No dashboard logic or portfolio calculations were otherwise changed.
+
 
 ## Streamlit Cloud compatibility fix
 
