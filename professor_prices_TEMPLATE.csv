@@ -1,0 +1,12 @@
+date,ticker,professor_price,note
+2026-10-16,SPY,,
+2026-10-16,SMH,,
+2026-10-16,CIBR,,
+2026-10-16,BIL,,
+2026-10-16,SCHD,,
+2026-10-16,XLV,,
+2026-10-16,XLP,,
+2026-10-16,XLE,,
+2026-10-16,^GSPC,,S&P500 benchmark level if professor provides it
+2026-10-16,KRW=X,,USD/KRW if professor provides it
+2026-10-16,KOSPI200,,Optional exact KOSPI200 snapshot; not mixed into KODEX proxy level
