@@ -1,54 +1,69 @@
-# DBA4014 Paper Trade Dashboard v8
+# DBA4014 Paper Trade Dashboard v9
 
-## What changed
+## Weekly workflow
 
-- Removed the on-site manual-price entry section.
-- Each week, add a new CSV file named like:
-  `professor_prices_20261016.csv`
-- The app automatically loads all `professor_prices_*.csv` files.
-- The final Transaction History table now shows:
-  - Professor price
-  - Yahoo close
-  - Yahoo price date
-  - Percentage difference
-- If professor price is not available, the Professor price and Difference cells stay blank.
-- Matching professor ETF / S&P500 / FX values override Yahoo values in calculations.
+You no longer edit CSV files.
 
-## Weekly professor file format
+### Friday
+Upload the latest **Orders workbook** directly in the Streamlit sidebar.
 
-Use the included `professor_prices_TEMPLATE.csv`.
+### Monday
+Upload the latest **Valuation workbook** directly in the Streamlit sidebar.
 
-Required columns:
+The course workbook already contains earlier weekly date tabs, so only the newest copy of
+each workbook is needed.
 
-```csv
-date,ticker,professor_price,note
-2026-10-16,SPY,780.25,Friday close
-2026-10-16,SMH,560.10,Friday close
-2026-10-16,KRW=X,1348.50,Professor FX
-```
+The dashboard parses:
+- current / outstanding positions
+- quantities
+- cash balance
+- official valuation snapshots
+- completed trades
+- first acquisition dates
+- latest completed adjustments
+- latest submitted Friday orders
 
-You can add one new file every week. Do not delete the older weekly files if you want
-the transaction-history comparison to remain visible for prior weeks.
+## Market data
 
-## KOSPI200 benchmark source
+Current monitoring uses Yahoo Finance online prices.
 
-The previous versions tried multiple automatic KOSPI200 sources. Yahoo's `^KS200`
-history was inconsistent on Streamlit Cloud, and `pykrx` introduced a Cloud dependency error.
+- The market-sensitive dashboard section automatically reruns every **1 hour** while the page is open.
+- Price downloads are cached for 55 minutes.
+- Hourly data are used when Yahoo provides them.
+- Daily close is used as a fallback.
+- Yahoo is not an exchange-grade real-time feed, so prices can be delayed.
 
-v8 intentionally stops switching among those sources.
+One hour is intentional: for a 6-week weekly-trading project, shorter intervals add little
+decision value and create more API traffic.
 
-For DAILY MONITORING:
-- the KOSPI200 sleeve uses KODEX 200 RETURNS as an explicit stable proxy.
+## Portfolio logic
 
-This is a deliberate proxy, not an exact KOSPI200 index level.
+The latest Monday valuation is authoritative for:
+- holdings
+- cash
+- official NAV snapshot
 
-The professor's exact KOSPI200 snapshots can still be stored in the weekly professor file,
-but v8 does not mix KOSPI200 index levels directly into KODEX ETF price levels because they
-are different units. This avoids the large artificial jumps that such mixing would create.
+If a newer Friday order workbook exists but the following Monday valuation has not yet been
+uploaded, the dashboard applies the submitted order quantities as an **estimate** until the
+next valuation becomes available.
 
-## Run
+## Benchmark
 
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
+The professor benchmark remains:
+- 40% KOSPI200
+- 30% S&P500 hedged
+- 30% S&P500 unhedged
+- weekly reset to 40/30/30
+
+For stable automatic monitoring, the KOSPI200 sleeve always uses **KODEX 200 returns as a fixed
+proxy**. This is deliberate. Earlier versions switched between unreliable KOSPI200 web sources,
+which caused the zero/incorrect benchmark readings.
+
+## Streamlit Cloud persistence
+
+When you upload a new workbook, the app tries to keep a copy in `runtime_uploads/`.
+This normally survives ordinary Streamlit reruns, but Streamlit Community Cloud local storage
+is not guaranteed to survive a container restart/redeploy.
+
+Because each latest course workbook already contains the earlier tabs, recovery is simple:
+just re-upload the newest Orders workbook and newest Valuation workbook.
